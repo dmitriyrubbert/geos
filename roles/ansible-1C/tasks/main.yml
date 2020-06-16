@@ -1,0 +1,165 @@
+---
+# tasks file for roles/ansible-1C
+
+# apt install imagemagick unixodbc libgsf-bin
+# - name: Update cache and install dependencies
+#   apt:
+#     pkg:
+#     - imagemagick
+#     - unixodbc
+#     - libgsf-bin
+#     - cabextract
+#     - libgsf-1-114
+#     - libgsf-1-common
+#     - libmspack0
+#     - libodbc1
+#     - odbcinst
+#     - odbcinst1debian2
+#     - ttf-mscorefonts-installer
+#     - libfreetype6
+#     - libgsf-1-common
+#     - unixodbc
+#     - glib2.0
+#     update_cache: yes
+#     state: present
+
+
+
+- name: Install a list of packages
+  yum:
+    name:
+      - bzip2
+      - wget
+    state: present
+
+- name: Generate /etc/hosts file
+  template:
+    src: templates/hosts.j2
+    dest: /etc/hosts
+    backup: yes
+
+- name: "Check if package is installed"
+  package_facts: manager="auto"
+
+- set_fact: installed=false
+  when: "'1c-enterprise83-server' not in ansible_facts.packages"
+# - debug: msg="{{ "'1c-enterprise83-server' in ansible_facts.packages" }}"
+
+- name: Copy 1C distr files
+  copy: src="{{ item }}" dest="{{ distrib_path }}/1cv8srv/"
+  loop: "{{ lookup('fileglob', 'deb*.gz', wantlist=True) }}"
+  register: copied_files
+  when: not installed and ansible_os_family == "Debian"
+
+- name: Copy 1C distr files
+  copy: src="{{ item }}" dest="{{ distrib_path }}/1cv8srv/"
+  loop: "{{ lookup('fileglob', 'rpm*.gz', wantlist=True) }}"
+  register: copied_files
+  when: not installed and ansible_os_family == "RedHat"
+
+# - debug: msg="Copied file ({{ item.dest }})"
+#   loop: "{{ copied_files.results }}"
+#   when: copied_files.changed
+
+- name: Unpack distrib on remote host
+  unarchive: src="{{ item.dest }}" dest="{{ distrib_path }}/1cv8srv/" remote_src=yes
+  loop: "{{ copied_files.results }}"
+  register: unarchived_files
+  when: copied_files.changed
+
+- name: Install all .deb package
+  shell: dpkg -i *.deb
+  args:
+    chdir: "{{ distrib_path }}/1cv8srv/"
+  when: not installed and ansible_os_family == "Debian"
+  notify: restart srv1cv83
+
+- name: Yum localinstall all 1C rpm packages
+  shell: yum localinstall -y *.rpm
+  args:
+    chdir: "/tmp/distr/postgres/"
+    warn: no
+  when: not installed and ansible_os_family == "RedHat"
+  notify: restart srv1cv83
+
+# - name: Start and enable 1C-Server
+#   systemd:
+#     name: srv1cv83
+#     daemon-reload: yes
+#     state: started
+#     enabled: True
+
+# - name: Start and enable daemon 1C-Server
+#   shell: /opt/1C/v{{version1c}}.{{subversion1c}}/x86_64/ragent -daemon
+#   when: not installed
+
+- name: Start HTTPD Server
+  systemd:
+    name: httpd
+    state: started
+    enabled: True
+  when: ansible_os_family == "RedHat"
+
+- name: create new httpd dir for 1C
+  file:
+    path: "/var/www/html/{{httpd_wsdir}}"
+    owner: apache
+    group: apache
+    state: directory
+    mode: 0755
+  when: ansible_os_family == "RedHat"
+
+- name: Create new httpd dir for 1C
+  file:
+    path: "/var/www/html/{{httpd_wsdir}}"
+    owner: www-data
+    group: root
+    state: directory
+    mode: 0755
+  when: ansible_os_family == "Debian"
+
+- name: Initialize 1c-webserver
+  shell: /opt/1C/v{{version1c}}.{{subversion1c}}/x86_64/webinst -apache{{httpd_version}} -wsdir {{httpd_wsdir}} -dir /var/www/html/{{httpd_wsdir}} -connstr "Srvr={{ansible_hostname}};Ref={{httpd_ref}};" -confPath /etc/apache2/apache2.conf
+  args:
+    creates: "/var/www/html/{{httpd_wsdir}}/default.vrd"
+  when: ansible_os_family == "Debian"
+
+- name: Initialize 1c-webserver
+  shell: /opt/1C/v{{version1c}}.{{subversion1c}}/x86_64/webinst -apache{{httpd_version}} -wsdir {{httpd_wsdir}} -dir /var/www/html/{{httpd_wsdir}} -connstr "Srvr={{ansible_hostname}};Ref={{httpd_ref}};" -confPath /etc/httpd/conf/httpd.conf
+  args:
+    creates: "/var/www/html/{{httpd_wsdir}}/default.vrd"
+  when: ansible_os_family == "RedHat"
+
+- name: Restart apache2 Server
+  systemd:
+    name: apache2
+    state: restarted
+  when: ansible_os_family == "Debian"
+
+- name: Restart httpd Server
+  systemd:
+    name: httpd
+    state: restarted
+  when: ansible_os_family == "RedHat"
+
+- include_tasks: create_db.yml
+  when: not installed
+
+- name: Ensure if srv1cv83 running on startup
+  shell: chkconfig srv1cv83 on
+
+- name: Create conf
+  file:
+    path: "/opt/1C/v8.3/x86_64/conf/"
+    state: directory
+    owner: "usr1cv8"
+    group: "grp1cv8"
+
+- name: Fix 1C hasp.ini
+  template:
+    src: nethasp.ini.j2
+    dest: "/opt/1C/v8.3/x86_64/conf/nethasp.ini"
+    owner: "usr1cv8"
+    group: "grp1cv8"
+    backup: yes
+  notify: restart srv1cv83

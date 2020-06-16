@@ -1,0 +1,102 @@
+---
+#
+# - name: Yum update
+#   yum:
+#     name: '*'
+#     state: latest
+
+- name: Yum install dependencies packages
+  yum:
+    name:
+        - python-psycopg2
+        - mc
+        - ImageMagick
+        - libmspack
+        - cabextract
+        - unixODBC
+    state: present
+
+- name: Set PostgreSQL dotless version fact
+  set_fact:
+    __postgresql_version_dotless: "{{ postgresql_version | replace('.', '') }}"
+    __postgresql_command_sep: "{{ postgresql_version is version('10', '>=') | ternary('-', '') }}"
+
+# Using the rpm URL format of the yum module causes Ansible to download the rpm
+# every time to check whether it's installed, so, don't do that.
+- name: Check pgdg repository package (RedHat)
+  yum:
+    name: "pgdg-redhat-repo"
+  register: __postgresql_repo_pkg_installed_result
+  ignore_errors: yes
+
+- name: Install pgdg repository package (RedHat)
+  yum:
+    name: >-
+      https://download.postgresql.org/pub/repos/yum/reporpms/{{ postgresql_pgdg_shortfamilies[ansible_distribution]
+        | default("EL") }}-{{ ansible_distribution_major_version }}-{{ ansible_architecture }}/pgdg-{{
+        postgresql_pgdg_families[ansible_distribution] | default("redhat") }}-repo-latest.noarch.rpm
+  register: __postgresql_yum_result
+  until: __postgresql_yum_result is succeeded
+  retries: 5
+  delay: 5
+  when: __postgresql_repo_pkg_installed_result is failed and not postgresql_1c_version
+
+####################################################
+# Install PostgreSQL from users.1cv8.ru
+#
+############################################
+- name: Copy PostgreSQL RPM distr files
+  copy: src="{{ item }}" dest="/tmp/distr/postgres/"
+  loop: "{{ lookup('fileglob', 'postgres/*rpm.tar.bz2', wantlist=True) }}"
+  register: copied_files
+  when: postgresql_1c_version
+
+- name: Unpack distrib on remote host
+  unarchive: src="{{ item.dest }}" dest="/tmp/distr/postgres/" remote_src=yes extra_opts="--strip-components=1"
+  loop: "{{ copied_files.results }}"
+  when: copied_files.changed and postgresql_1c_version
+
+- name: Yum localinstall all postgres rpm packages
+  shell: yum localinstall -y *.rpm
+  args:
+    chdir: "/tmp/distr/postgres/"
+    warn: no
+  when: copied_files.changed and postgresql_1c_version
+
+#
+# install from free repo
+####################################
+
+- name: "Install postgresql{{ __postgresql_version_dotless }}-server and postgis25_{{ __postgresql_version_dotless }} (RedHat)"
+  yum:
+    name:
+      - "postgresql{{ __postgresql_version_dotless }}-server"
+      # - "postgis25_{{ __postgresql_version_dotless }}"
+    state: present
+  ignore_errors: yes
+  when: not postgresql_1c_version 
+
+- name: Check for pgdata directory
+  stat:
+    path: "{{ postgresql_pgdata }}/base"
+  register: pgdata_stat
+  failed_when: false
+  when: not postgresql_1c_version
+
+- name: Initialize database (RedHat < 7)
+  command: /sbin/service postgresql-{{ postgresql_version }} initdb
+  args:
+    warn: false  # Use of /sbin/service is valid here, ignore lint error
+  when: >-
+    ansible_distribution_major_version is version(7, '<')
+      and (pgdata_stat.stat.isdir is not defined or not pgdata_stat.stat.isdir)
+  ignore_errors: yes
+
+- name: Initialize database (RedHat >= 7)
+  command: >-
+    /usr/pgsql-{{ postgresql_version }}/bin/postgresql{{ __postgresql_command_sep }}{{
+      __postgresql_version_dotless }}-setup initdb
+  when: >-
+    ansible_distribution_major_version is version(7, '>=')
+      and (pgdata_stat.stat.isdir is not defined or not pgdata_stat.stat.isdir)
+  ignore_errors: yes

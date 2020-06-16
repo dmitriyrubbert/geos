@@ -1,0 +1,18 @@
+---
+- name: deploy war url
+  get_url:
+    url: "{{ war.url }}"
+    dest: "{{ tomcat_directory }}//{{ instance.name }}/webapps/"
+    validate_certs: no
+  when:
+    - war.url is defined
+
+- name: download unarchive and deploy geoserver
+  unarchive:
+    src: "{{ war.archive_url }}"
+    dest: "{{ tomcat_directory }}//{{ instance.name }}/webapps/"
+    # If the specified absolute path (file or directory) already exists, this step will not be run.
+    creates: "{{ tomcat_directory }}//{{ instance.name }}/webapps/geoserver/"
+  when:
+    - war.archive_url is defined
+  retries: 3

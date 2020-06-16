@@ -1,0 +1,392 @@
+---
+# tasks file for psql-1c
+# Установка и настройка 1С на ОС СН Смоленск 1.6/ОС ОН Орёл 2.12
+# 9.6.6.1 с WEB-сайта разработчиков PostgreSQL 1C 8.3.16.1030
+# https://wiki.astralinux.ru/pages/viewpage.action?pageId=41191288
+
+  # - name: Disable SELINUX
+  #   lineinfile:
+  #     dest: /etc/selinux/config
+  #     regexp: '^SELINUX='
+  #     line: 'SELINUX=disabled'
+  #     state: present
+
+  # - name: Stop and Disable Firewalld
+  #   systemd:
+  #     state: stopped
+  #     enabled: no
+  #     name: firewalld
+
+  # - name: Yum update
+  #   yum:
+  #     name: '*'
+  #     state: latest
+
+  # - name: Yum install package epel-release
+  #   yum:
+  #     name: epel-release
+  #     state: latest
+#
+#   - name: Yum install all packages
+#     yum:
+#       name={{item}}
+#       state=latest
+#     with_items:
+#       - system-storage-manager
+#       - samba
+#       - httpd
+#       - net-tools
+#       - mc
+#       - wget
+#       - nfs-utils
+#       - ImageMagick
+#       - libmspack
+#       - ttmkfdir
+#       - cabextract
+#       - rpm-build
+#       - unixODBC
+#       - xorg-x11-fonts-Type1
+# #      - xorg-x11-fonts-truetype
+#       - curl
+#       - cabextract
+#       - xorg-x11-font-utils
+#       - fontconfig
+#       - vsftpd
+#       - ftp
+
+  - name: Create groups (admins, users)
+    group:
+      name={{item}}
+      state=present
+    with_items:
+      - users
+      - admins
+
+  - name: Create users (admin, user)
+    user:
+      name: "{{ item.name }}"
+      groups: "{{ item.groups }}"
+      password: "{{ item.pwd }}"
+      state: present
+    with_items:
+      - { name: admin, groups: "admins,users", pwd: "{{ admin_pwd }}" }
+      - { name: user, groups: users, pwd: "{{ user_pwd }}" }
+
+  # - name: Start and Enable VSFTPD
+  #   systemd:
+  #     name: vsftpd
+  #     state: started
+  #     enabled: True
+
+  - name: Creates dirs DATADIR BACKUPS distr
+    file:
+      path: "{{ item.path }}"
+      owner: "{{ item.owner }}"
+      group: "{{ item.group }}"
+      state: directory
+      mode: 0755
+    with_items:
+      - { path: "/mnt/DATADIR", owner: user, group: users }
+      - { path: "/mnt/BACKUPS/1c-backup", owner: admin, group: admins }
+      # - { path: "{{ distrib_path }}/rpm",  owner: admin, group: admins }
+      - { path: "{{ distrib_path }}/postgres",  owner: admin, group: admins }
+      - { path: "{{ distrib_path }}/1c-server/{{ build1c }}",  owner: admin, group: admins }
+
+  - name: Copy backup and restore scripts
+    copy:
+      src: "{{ item.src }}"
+      dest: "{{ item.dst }}"
+      mode: "{{ item.mode }}"
+    with_items:
+      # - { src: "rpm/msttcore-fonts-installer-2.6-1.noarch.rpm", dst: "{{ distrib_path }}/rpm/", mode: "0644" }
+      - { src: "templates/backup1c.j2", dst: "/usr/local/bin/backup1c", mode: "0755" }
+      - { src: "templates/pg_restore.j2", dst: "/usr/local/bin/pg_restore", mode: "0755" }
+
+  #
+  # - name: Unarchive postgres server distrib files
+  #   unarchive:
+  #     src: "{{ item }}"
+  #     dest: "{{ distrib_path }}/postgres/deb"
+  #     remote_src: yes
+  #     extra_opts: "--strip-components=1"
+  #     creates: "{{ item }}"
+  #   with_fileglob:
+  #     - "{{ distrib_path }}/postgres/*"
+  #   register: output
+
+  # - debug: msg="{{ output }}"
+
+  # - name: Unarchive postgres server distrib files
+  #   unarchive:
+  #     src: "{{ item }}"
+  #     dest: "{{ distrib_path }}/postgres/"
+  #     # extra_opts: "--strip-components=1"
+  #     creates: "{{ distrib_path }}/postgres/"
+  #   with_fileglob:
+  #     - postgres/*
+
+  #
+  # - name: Display paths of all .txt files in dir
+  #   debug: msg={{ lookup('fileglob', 'postgres/*.bz2') }}
+  #
+  #
+  # - name: Ensure if postgresql remote files exists
+  #   find:
+  #     paths: "{{ distrib_path }}/postgres/"
+  #     patterns: '*.deb'
+  #   register: find_result
+  # # - debug: msg="{{ find_result }}"
+  #
+  # - name: Copy and unarchive postgres server distrib files
+  #   unarchive:
+  #     src: "{{ item }}"
+  #     dest: "{{ distrib_path }}/postgres/"
+  #     extra_opts: "--strip-components=1"
+  #   with_fileglob:
+  #       - postgres/*.bz2
+  #   when: not find_result.matched
+  #
+  # - name: Ensure if 1C remote files exists
+  #   find:
+  #     paths: "{{ distrib_path }}/1c-server/{{ build1c }}/"
+  #     patterns: '*.deb'
+  #   register: find_result_1c
+  #
+  # - name: Copy and unarchive 1C server distrib files
+  #   unarchive:
+  #     src: "{{ item }}"
+  #     dest: "{{ distrib_path }}/1c-server/{{ build1c }}/"
+  #   with_fileglob:
+  #       - 1c-server/{{ build1c }}/*.tar.gz
+  #   when: not find_result_1c.matched
+
+  # - name: Install all postgres .deb package
+  #   apt:
+  #     deb: "{{ item }}"
+  #     update_cache: yes
+        # install_recommends: true
+  #   with_fileglob:
+  #   - "{{ distrib_path }}/postgres/*"
+
+  # - debug: msg="{{ find_result.files | map(attribute='path') | list }}"
+
+  # - name: Installed the rpm files
+  #   shell: yum localinstall *.rpm -y
+  #   args:
+  #     chdir: /tmp/rpm_dir
+
+  - name: Install all postgres .deb package
+    shell: dpkg -i *.deb
+    args:
+      chdir: "{{ distrib_path }}/postgres/"
+
+
+  # - name: Yum localinstall all postgres rpm packages
+  #   shell: yum localinstall -y *.rpm
+  #   args:
+  #     chdir: {{ distrib_path }}/postgres/
+  #     warn: no
+
+  #
+  # - name: Yum localinstall all 1c-server rpm packages
+  #   shell: yum localinstall -y *.rpm
+  #   args:
+  #     chdir: "{{ distrib_path }}/1c-server/{{ build1c }}/"
+  #     warn: no
+  #
+  # - name: Create postgres password file
+  #   lineinfile:
+  #     path: /tmp/pwd
+  #     line: "{{ postgres_password }}"
+  #     state: present
+  #     create: yes
+  #
+  # - name: initialize postgres
+  #   shell: /usr/pgsql-9.6/bin/initdb -D /var/lib/pgsql/9.6/data --locale=ru_RU.UTF-8 --pwfile=/tmp/pwd
+  #   args:
+  #     creates: /var/lib/pgsql/9.6/data/postgresql.conf
+  #   become: yes
+  #   become_user: postgres
+  #
+  # - name: update host hb_pga.conf (md5)
+  #   lineinfile:
+  #     path: /var/lib/pgsql/9.6/data/pg_hba.conf
+  #     regexp: '^host\s+all\s+all\s+0.0.0.0/0\s+trust'
+  #     line: "host	all	all	0.0.0.0/0	md5"
+  #     state: present
+  #
+  # - name: update host hb_pga.conf (replication)
+  #   lineinfile:
+  #     path: /var/lib/pgsql/9.6/data/pg_hba.conf
+  #     insertafter: EOF
+  #     line: "local	replication	postgres	trust"
+  #     state: present
+  #
+  #
+  # - name: update host postgresql.conf (wal_level)
+  #   lineinfile:
+  #     path: /var/lib/pgsql/9.6/data/postgresql.conf
+  #     regexp: "^wal_level"
+  #     insertafter: EOF
+  #     line: "wal_level = {{wal_level}}"
+  #     state: present
+  #
+  # - name: update host postgresql.conf (max_wal_senders)
+  #   lineinfile:
+  #     path: /var/lib/pgsql/9.6/data/postgresql.conf
+  #     regexp: "^max_wal_senders"
+  #     insertafter: EOF
+  #     line: "max_wal_senders = {{max_wal_senders}}"
+  #     state: present
+  #
+  # - name: update host postgresql.conf (effective_cache_size)
+  #   lineinfile:
+  #     path: /var/lib/pgsql/9.6/data/postgresql.conf
+  #     regexp: "^effective_cache_size"
+  #     insertafter: EOF
+  #     line: "effective_cache_size = {{effective_cache_size}}"
+  #     state: present
+  #
+  # - name: update host postgresql.conf (wal_buffers)
+  #   lineinfile:
+  #     path: /var/lib/pgsql/9.6/data/postgresql.conf
+  #     regexp: "^wal_buffers"
+  #     insertafter: EOF
+  #     line: "wal_buffers = {{wal_buffers}}"
+  #     state: present
+  #
+  # - name: update host postgresql.conf (shared_buffers)
+  #   lineinfile:
+  #     path: /var/lib/pgsql/9.6/data/postgresql.conf
+  #     regexp: "^shared_buffers"
+  #     insertafter: EOF
+  #     line: "shared_buffers = {{shared_buffers}}"
+  #     state: present
+  #
+  # - name: update host postgresql.conf (temp_buffers)
+  #   lineinfile:
+  #     path: /var/lib/pgsql/9.6/data/postgresql.conf
+  #     regexp: "^temp_buffers"
+  #     insertafter: EOF
+  #     line: "temp_buffers = {{temp_buffers}}"
+  #     state: present
+  #
+  # - name: update host postgresql.conf (work_mem)
+  #   lineinfile:
+  #     path: /var/lib/pgsql/9.6/data/postgresql.conf
+  #     regexp: "^work_mem"
+  #     insertafter: EOF
+  #     line: "work_mem = {{work_mem}}"
+  #     state: present
+  #
+  # - name: Start and Enable PostgreSQL
+  #   systemd:
+  #     name: postgresql-{{pg_version}}
+  #     state: started
+  #     enabled: True
+  #
+  # - name: Add hostnmae in hosts
+  #   lineinfile:
+  #     path: /etc/hosts
+  #     regexp: "^{{ansible_hostname}}"
+  #     insertafter: EOF
+  #     line: "{{ansible_default_ipv4.address}}	{{ansible_hostname}}"
+  #     state: present
+  #
+  # - name: chown /opt/1c
+  #   file:
+  #     path: /opt/1C
+  #     recurse: yes
+  #     group: grp1cv{{version1c}}
+  #     owner: usr1cv{{version1c}}
+  #
+  # - name: Fix /etc/init.d/srv1cvXX
+  #   lineinfile:
+  #     path: /etc/init.d/srv1cv{{version1c}}{{subversion1c}}
+  #     regexp: "^#!"
+  #     insertbefore: BOF
+  #     line: "#!/bin/bash"
+  #     state: present
+  #
+  # - name: Start and Enable 1C-Server
+  #   systemd:
+  #     name: srv1cv{{version1c}}{{subversion1c}}
+  #     daemon-reload: yes
+  #     state: started
+  #     enabled: True
+  #
+  # - name: Creates 1c-volume dir
+  #   file:
+  #     path: "{{ item.path }}"
+  #     owner: "{{ item.owner }}"
+  #     group: "{{ item.group }}"
+  #     state: directory
+  #     mode: 0755
+  #   with_items:
+  #     - { path: "/mnt/BACKUPS/1c-volume", owner: usr1cv8, group: grp1cv8 }
+  #
+  # - name: add admin, user into grp1cv8
+  #   user:
+  #     name: "{{ item }}"
+  #     groups: 'grp1cv8'
+  #   with_items:
+  #     - admin
+  #     - user
+  #
+  # - name: Start HTTPD Server
+  #   systemd:
+  #     name: httpd
+  #     state: started
+  #     enabled: True
+  #
+  # - name: create new httpd dir for 1C
+  #   file:
+  #     path: "{{httpd_path_1c}}"
+  #     owner: apache
+  #     group: apache
+  #     state: directory
+  #     mode: 0755
+  #
+  # - name: initialize 1c-webserver
+  #   shell: /opt/1C/v{{version1c}}.{{subversion1c}}/x86_64/webinst -apache{{httpd_version}} -wsdir {{httpd_wsdir}} -dir {{httpd_path_1c}} -connstr "Srvr={{ansible_hostname}};Ref=’{{httpd_ref}}’;" -confPath /etc/httpd/conf/httpd.conf
+  #   args:
+  #     creates: "{{httpd_path_1c}}/default.vrd"
+  #
+  # - name: ReStart HTTPD Server
+  #   systemd:
+  #     name: httpd
+  #     state: restarted
+  #
+  # - name: Copy Samba Config
+  #   copy:
+  #     src: conf/smb.conf
+  #     dest: /etc/samba/
+  #
+  # - name: Start SMB Server
+  #   systemd:
+  #     name: smb
+  #     state: started
+  #     enabled: True
+  #
+  # - name: Start NMB Server
+  #   systemd:
+  #     name: nmb
+  #     state: started
+  #     enabled: True
+  #
+  # - name: Creates Samba Users
+  #   shell: printf '{{ item.password }}\n{{ item.password }}\n' | (pdbedit -a -u={{ item.username }} -t 2>&1 > /dev/null)
+  #   with_items:
+  #     - { username: "admin", password: "admin" }
+  #     - { username: "user", password: "user" }
+  #
+  # - name: Configure crontab backups
+  #   cron:
+  #     name: backup postgres
+  #     minute: "0"
+  #     hour: "12,19"
+  #     job: "/usr/local/bin/backup1c"
+  #
+  # - name: Please make next steps
+  #   debug:
+  #     msg: "1. mount /dev/sdxN /mnt/DATADIR \n 2. mount /dev/sdxN /mnt/BACKUPS"

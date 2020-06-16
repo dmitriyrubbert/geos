@@ -1,0 +1,62 @@
+---
+- name: Tomcat
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  vars:
+    ansible_os_family: RedHat
+    ansible_distribution: RedHat
+    ansible_distribution_major_version: 7
+    geoserver_home: /usr/share/geoserver
+
+    tomcat_instances:
+      - name: "tomcat"
+        version: 9
+        tomcat_version9: 9.0.30
+        tomcat_non_ssl_connector_port: 8080
+        tomcat_username: admin
+        tomcat_user_password: tomcat
+        wars:
+          # - archive_url: https://netcologne.dl.sourceforge.net/project/geoserver/GeoServer/2.16.1/geoserver-2.16.1-war.zip
+          # - url: https://tomcat.apache.org/tomcat-7.0-doc/appdev/sample/sample.war
+          - archive_url: ./files/geoserver-2.16.1-war.zip
+
+  pre_tasks:
+    # - set_fact: ansible_os_family = "Debian"
+    #   when: ansible_os_family == "Astra Linux (Orel)"
+    # - set_fact: ansible_os_family = "RedHat"
+    #   when: ansible_os_family == "ROSA"
+    # - debug: msg="OS family is {{ansible_os_family}}"
+    # -name: Tweaking
+    #   set_fact: ansible_os_family=RedHat ansible_distribution=RedHat ansible_distribution_major_version=7
+    #   when: ansible_os_family == "ROSA"
+    # - debug: msg="OS family is {{ansible_os_family}}"
+
+  roles:
+      - robertdebock.java
+      - robertdebock.tomcat
+      - ansible-role-apache
+
+
+  tasks:
+    - name: ensure is GeoServer directory exists
+      file:
+        path: "{{ geoserver_home}}"
+        state: directory
+        owner: "{{ instance.user | default(tomcat_user) }}"
+        group: "{{ instance.group | default(tomcat_group) }}"
+
+    - name: Add an environment variable to save the location of GeoServer
+      lineinfile:
+        path: /etc/environment
+        line: "GEOSERVER_HOME={{ geoserver_home }}"
+        state: present
+        create: yes
+      notify:
+        - restart tomcat instance
+
+    # - debug: msg="{{ ansible_os_family }}"
+    # - debug: msg="{{ (override_os_family is defined) | ternary(override_os_family,ansible_os_family) }}"
+    # - name: Simple A record (IPV4 address) lookup for example.com
+      # debug: msg="http://{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address']}}:{{ vars['tomcat_instances'][0]['tomcat_non_ssl_connector_port'] }}/seoserver/"

@@ -1,0 +1,51 @@
+---
+
+# https://docs.ansible.com/ansible/latest/modules/command_module.html#examples
+# https://docs.ansible.com/ansible/latest/modules/shell_module.html#examples
+# https://trac.osgeo.org/postgis/wiki/UsersWikiPostGIS21CentOS6pgdg
+
+- name: Set PostgreSQL dotless version fact
+  set_fact:
+    __postgresql_version_dotless: "{{ postgresql_version | replace('.', '') }}"
+    __postgresql_command_sep: "{{ postgresql_version is version('10', '>=') | ternary('-', '') }}"
+
+- name: "Install postgis25_{{ __postgresql_version_dotless }} and dependencies (RedHat)"
+  yum:
+    name:
+      - "postgis25_{{ __postgresql_version_dotless }}"
+      - python-psycopg2
+    state: present
+  ignore_errors: yes
+  register: postgis_installed
+
+- name: ensure template_postgis database exists
+  command: createdb -p {{ postgresql_default_port }} postgis
+  become: yes
+  become_user: postgres
+  register: createdb_postgis
+  ignore_errors: yes
+  when: postgis_installed is defined
+
+- name: enable postgis extension
+  become_user: postgres
+  command: psql -p {{ postgresql_default_port }} -d postgis -c "CREATE EXTENSION postgis;"
+  ignore_errors: yes
+  when: postgis_installed is defined
+
+- name: enable postgis postgis_topology extension
+  become_user: postgres
+  command: psql -p {{ postgresql_default_port }} -d postgis -c "CREATE EXTENSION postgis_topology;"
+  ignore_errors: yes
+  when: postgis_installed is defined
+
+- name: enable postgis fuzzystrmatch extension
+  become_user: postgres
+  command: psql -p {{ postgresql_default_port }} -d postgis -c "CREATE EXTENSION fuzzystrmatch;"
+  ignore_errors: yes
+  when: postgis_installed is defined
+
+- name: enable postgis postgis_tiger_geocoder extension
+  become_user: postgres
+  command: psql -p {{ postgresql_default_port }} -d postgis -c "CREATE EXTENSION postgis_tiger_geocoder;"
+  ignore_errors: yes
+  when: postgis_installed is defined

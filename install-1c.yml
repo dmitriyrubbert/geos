@@ -1,0 +1,36 @@
+---
+##################################################
+## Dmitriy Lazarev (goldlinux) 2020              #
+##################################################
+# Установка и настройка PostgreSQL 9.6.6.1 и
+# 1C 8.3.16.1030 на ОС Astralinux ОН Орёл 2.12
+# https://wiki.astralinux.ru/pages/viewpage.action?pageId=41191288
+# https://infostart.ru/public/73972/
+# https://wiki.lineris.ru/linux_server#%D1%83%D1%81%D1%82%D0%B0%D0%BD%D0%BE%D0%B2%D0%BA%D0%B0_%D1%81%D1%83%D0%B1%D0%B4_postgresql
+# administrirovanie http://oparin.info/1c/administrirovanie-serverov-1s-pod-linux-ubuntu/
+- name: install 1C
+  hosts: dbservers
+  remote_user: root
+  become: yes
+  gather_facts: yes
+
+  pre_tasks:
+    - name: Open ferewall ports
+      shell: |
+        iptables -A IN_public_allow -p tcp --dport 1540:1541 -j ACCEPT -m comment --comment "1c"
+        iptables -A IN_public_allow -p tcp --dport 1560:1591 -j ACCEPT -m comment --comment "1c"
+      ignore_errors: yes
+
+  vars:
+    # ansible_os_family: "Debian"
+    ansible_os_family: "RedHat"
+    postgres_password: password
+
+  roles:
+    - ansible-1C
+
+  tasks:
+    - name: Change PostgreSQL password
+      become_user: postgres
+      command: psql -c "ALTER ROLE postgres WITH PASSWORD '{{ postgres_password }}';"
+      ignore_errors: yes

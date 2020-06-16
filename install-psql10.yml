@@ -1,0 +1,43 @@
+---
+- name: install pg
+  hosts: dbservers
+  remote_user: root
+  become: yes
+  gather_facts: yes
+
+  vars:
+    # ansible_os_family: "Debian"
+    # if "ansible_os_family": "ROSA",
+    postgresql_default_port: 5433
+    postgresql_1c_version: false
+    postgresql_default_version: 10
+    postgres_password: $1$SomeSalt$UqddPX3r4kH3UL5jq5/ZI.
+    postgresql_version: 10
+    postgresql_flavor: pgdg
+    postgresql_backup_dir: /archive
+    postgresql_conf:
+      - listen_addresses: "'*'"
+      - port: "{{ postgresql_default_port }}"
+      - max_connections: 50
+      # - backslash_quote: safe_encoding
+      # - escape_string_warning: off
+      # - standart_conforming_strings: off
+    postgresql_pg_hba_conf:
+      - host all all 0.0.0.0/0 md5
+  roles:
+    - ansible-postgresql
+
+  pre_tasks:
+    # - name: Open ferewall ports
+    #   shell: |
+    #     iptables -A IN_public_allow -p tcp --dport 80 -j ACCEPT -m comment --comment "http"
+    #     iptables -A IN_public_allow -p tcp --dport 443 -j ACCEPT -m comment --comment "https"
+    #     iptables -A IN_public_allow -p tcp --dport 8080 -j ACCEPT -m comment --comment "geoserver"
+    #     iptables -A IN_public_allow -m state --state NEW -m tcp -p tcp --dport 5433 -j ACCEPT -m comment --comment "postgresql10_instance"
+    #   ignore_errors: yes
+
+  tasks:
+    - name: Change PostgreSQL password
+      become_user: postgres
+      command: psql -p {{ postgresql_default_port }} -c "ALTER ROLE postgres WITH PASSWORD '{{ postgres_password }}';"
+      ignore_errors: yes

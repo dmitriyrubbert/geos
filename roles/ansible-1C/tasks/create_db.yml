@@ -1,0 +1,51 @@
+# https://infostart.ru/public/104654/
+# http://oparin.info/1c/administrirovanie-serverov-1s-pod-linux-ubuntu/
+# https://forum.infostart.ru/forum86/topic200406/
+# https://its.1c.ru/db/metod8dev#content:5953:hdoc
+
+
+# /opt/1C/v8.3/x86_64/ras --daemon cluster
+# /opt/1C/v8.3/x86_64/rac cluster list
+# /opt/1C/v8.3/x86_64/rac infobase --cluster=26d7358d-8fe2-4eb5-b9b4-cc85897f8856 summary list
+# /opt/1C/v8.3/x86_64/rac infobase --cluster=26d7358d-8fe2-4eb5-b9b4-cc85897f8856 create --create-database --name=geos2 --dbms=PostgreSQL --db-server=localhost --db-name=geos2 --locale=ru --db-user=postgres --db-pwd=very_secret_password --license-distribution=allow
+
+# - name: test multiline shell
+#     shell: |
+#       /opt/1C/v8.3/x86_64/rac \
+#       cluster list
+
+- set_fact: path=/opt/1C/v{{version1c}}.{{subversion1c}}/x86_64/
+
+- name: Start and enable ragent
+  shell: "{{path}}ragent -daemon"
+  # when: not installed
+
+- name: Start and enable ras
+  shell: "{{path}}ras --daemon cluster"
+
+# /opt/1C/v8.3/x86_64/rac cluster list | grep cluster |  awk -F": " '{ print $2 }'
+- name: Get cluster list
+  shell: "{{path}}rac cluster list | grep cluster |  awk -F': ' '{ print $2 }'"
+  register: cluster
+
+- debug: msg="Cluster list {{cluster.stdout}}"
+
+- name: Get infobase summary list
+  shell: "{{path}}rac infobase --cluster={{cluster.stdout}} summary list"
+  register: infobase_list
+
+- debug: msg="Base list {{infobase_list.stdout}}"
+
+# - name: Create infobase if not exists
+#   shell: "{{path}}rac infobase --cluster={{cluster.stdout}} create --create-database --name=geos --dbms=PostgreSQL --db-server=localhost --db-name=geos --locale=ru --db-user=postgres --db-pwd={{postgres_password}} --license-distribution=allow"
+#   register: infobase
+#   ignore_errors: yes
+
+- name: Create infobase if not exists
+  become_user: postgres
+  command: "{{path}}rac infobase --cluster={{cluster.stdout}} create --create-database --name=geos --dbms=PostgreSQL --db-server={{ ansible_default_ipv4.address }} --db-name=geos --locale=ru --db-user=postgres --db-pwd={{postgres_password}} --license-distribution=allow"
+  register: infobase
+  ignore_errors: yes
+
+- debug: msg="Created {{infobase.stdout}}"
+  when: infobase is succeeded

@@ -1,0 +1,65 @@
+---
+# tasks file for roles/ansible-cryptopro
+
+- name: Install a list of packages
+  yum:
+    name:
+      - usbutils
+      - libusb
+      - pcsc-lite-libs
+      - lsb-core-amd64
+    state: present
+
+- name: Copy files
+  copy: src="linux-amd64.tgz" dest="/tmp/distr/cryptopro/"
+  register: copied_files
+
+- name: Unpack files on remote host
+  unarchive: src="{{ copied_files.dest }}" dest="/tmp/distr/cryptopro/" remote_src=yes extra_opts="--strip-components=1"
+  register: unarchived_files
+  when: copied_files.changed
+
+- name: Run installation script
+  shell: ./install.sh
+  when: copied_files.changed
+  args:
+    chdir: "/tmp/distr/cryptopro/"
+    warn: no
+
+- name: Install *RPM files
+  shell: rpm -i cprocsp-rdr-pcsc-* lsb-cprocsp-pkcs11-* lsb-cprocsp-kc2-64-*
+  ignore_errors: yes
+  args:
+    chdir: "/tmp/distr/cryptopro/"
+    warn: no
+
+- name: Установка пакетов поддержки устройств
+  shell: rpm -i cprocsp-rdr-rutoken* ifd-rutokens*
+  ignore_errors: yes
+  args:
+    chdir: "/tmp/distr/cryptopro/"
+    warn: no
+
+- name: Копирование корневых сертификатов
+  copy: src="{{ item }}" dest="/tmp/distr/cryptopro/cer/"
+  loop: "{{ lookup('fileglob', '*.cer', wantlist=True) }}"
+  register: copied_files
+
+- name: Установка корневых сертификатов
+  shell: /opt/cprocsp/bin/amd64/certmgr -inst -cert -store uRoot -file {{ item.dest }}
+  loop: "{{ copied_files.results }}"
+  ignore_errors: yes
+  when: copied_files.changed
+
+- name: Установка сертификатов с Рутокена
+  shell: /opt/cprocsp/bin/amd64/certmgr -inst -cont \.\Aktiv Co. Rutoken S 00 00\ -store uMy
+  ignore_errors: yes
+  when: copied_files.changed
+  notify: Reload cprocsp
+
+- name: adding usr1cv8 to group root
+  user:
+    name: 'usr1cv8'
+    groups: root
+    append: yes
+  notify: restart srv1cv83

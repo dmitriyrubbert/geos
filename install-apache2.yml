@@ -1,0 +1,30 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+
+  vars:
+    ansible_os_family : 'RedHat'
+    apache_listen_port_ssl: 443
+    apache_create_vhosts: true
+    apache_vhosts_filename: "vhosts.conf"
+    apache_vhosts:
+      - servername: "www.local.dev"
+        serveralias: "local.dev"
+        documentroot: "/var/www/html"
+        extra_parameters: |
+          RewriteCond %{HTTP_HOST} !^www\. [NC]
+          RewriteRule ^(.*)$ http://www.%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
+  pre_tasks:
+    # - name: Set hostname
+    #   hostname: use=redhat name="{{ansible_hostname}}"
+      # when: ansible_os_family == 'ROSA'
+    - set_fact: ansible_os_family = 'Debian'
+      when: ansible_os_family == 'Astra Linux (Orel)'
+    - set_fact: ansible_os_family = 'RedHat'
+      when: ansible_os_family == 'ROSA'
+    - debug: msg="{{ansible_os_family}}"
+
+  roles:
+    - ansible-role-apache

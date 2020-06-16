@@ -1,0 +1,18 @@
+---
+- name: Default
+  hosts: all
+  gather_facts: no
+  become: yes
+  vars:
+    ansible_os_family: RedHat
+    ansible_distribution: RedHat
+    ansible_distribution_major_version: 7
+    java_openjdk_package: java-1.8.0-openjdk
+    java_default_version: java-1.8.0-openjdk
+  roles:
+    # - ansible-role-bootstrap
+    - robertdebock.java
+  tasks:
+    - name: Next, check if Java is already installed
+      shell: java -version
+      ignore_errors: yes

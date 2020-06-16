@@ -1,0 +1,12 @@
+---
+- name: restart srv1cv83
+  service: name=srv1cv83 state=restarted
+
+# - name: restart srv1cv83
+#   systemd:
+#     state: restarted
+#     daemon_reload: yes
+#     name: srv1cv83
+
+- name: reload cprocsp
+  service: name=cprocsp state=restarted

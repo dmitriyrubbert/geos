@@ -1,0 +1,4 @@
+---
+
+- name: restart srv1cv83
+  service: name=srv1cv83 state=restarted

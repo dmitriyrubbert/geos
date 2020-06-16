@@ -1,0 +1,38 @@
+#"ansible_os_family": "Astra Linux (Orel)"
+---
+
+- name: Install pgdg package signing key (Debian/pgdg)
+  apt_key:
+    url: http://1c.postgrespro.ru/keys/GPG-KEY-POSTGRESPRO-1C
+    state: present
+  register: __postgresql_apt_key_result
+  until: __postgresql_apt_key_result is succeeded
+  retries: 5
+  delay: 5
+  when: postgresql_flavor is defined and postgresql_flavor == "pgdg"
+
+- name: Install pgdg repository (Debian/pgdg)
+  apt_repository:
+    repo: "deb http://repo.postgrespro.ru/pgpro-archive/pgpro-9.6.6.1/debian stretch main"
+    update_cache: yes
+  when: postgresql_flavor is defined and postgresql_flavor == "pgdg"
+
+- name: Install PostgreSQL (Debian)
+  apt:
+    pkg: postgrespro-9.6
+    state: present
+  register: __postgresql_apt_result
+  until: __postgresql_apt_result is succeeded
+  retries: 5
+  delay: 5
+
+- name: Get installed version
+  command: dpkg-query -f ${Version;3} --show postgresql
+  when: postgresql_version is not defined
+  register: __postgresql_version_query_result
+  changed_when: false
+
+- name: Set version fact
+  set_fact:
+    postgresql_version: "{{ __postgresql_version_query_result.stdout.split('+') | first }}"
+  when: postgresql_version is not defined

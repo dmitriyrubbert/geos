@@ -1,0 +1,10 @@
+- name: Install PostGIS extension for Postgresql for CentOS
+  hosts: all
+  become: yes
+  become_method: sudo
+
+  roles:
+    - ansible-role-postgis
+
+  tags:
+    - postgis

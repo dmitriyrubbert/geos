@@ -1,0 +1,32 @@
+---
+# vars file for roles/ansible-1C
+#
+#
+# pg_version: 9.6
+# postgres_password: baza1c
+# admin_pwd: $1$SomeSalt$UqddPX3r4kH3UL5jq5/ZI.
+# user_pwd: $1$SomeSalt$UqddPX3r4kH3UL5jq5/ZI.
+
+# postgresql.conf properties
+# wal_level: hot_standby
+# max_wal_senders: 2
+# effective_cache_size: 8GB
+# wal_buffers: -1
+# shared_buffers: 2GB
+# temp_buffers: 32MB
+# work_mem: 32MB
+
+#1C Server variables
+version1c: 8
+subversion1c: 3
+build1c: 8.3.16.1030
+
+#HTTPD
+httpd_version: 24
+httpd_ref: geos
+httpd_wsdir: geos
+
+#SAMBA
+#samba_users: [{username: admin, password: admin}, {username: user, password: user}]
+
+distrib_path: /tmp/distr

@@ -1,0 +1,6 @@
+*.retry
+*.ssh_key*
+*.gz
+*.bz2
+*.zip
+*.deb

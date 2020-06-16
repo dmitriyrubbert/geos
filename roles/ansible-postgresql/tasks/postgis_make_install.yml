@@ -1,0 +1,139 @@
+---
+"""
+# https://riptutorial.com/ru/postgis/example/27180/%D1%83%D1%81%D1%82%D0%B0%D0%BD%D0%BE%D0%B2%D0%BA%D0%B0-%D0%B8%D0%B7-%D0%B8%D1%81%D1%82%D0%BE%D1%87%D0%BD%D0%B8%D0%BA%D0%B0--%D1%81-postgres-9-1-%D0%B8%D0%BB%D0%B8-%D0%BD%D0%BE%D0%B2%D0%B5%D0%B5-
+# https://trac.osgeo.org/postgis/wiki/UsersWikiPostGIS21CentOS6pgdg
+
+"""
+
+- name: Set PostgreSQL dotless version fact
+  set_fact:
+    __postgresql_version_dotless: "{{ postgresql_version | replace('.', '') }}"
+    __postgresql_command_sep: "{{ postgresql_version is version('10', '>=') | ternary('-', '') }}"
+
+# Using the rpm URL format of the yum module causes Ansible to download the rpm
+# every time to check whether it's installed, so, don't do that.
+# - name: Check pgdg repository package (RedHat)
+#   yum:
+#     name: "pgdg-redhat-repo"
+#   register: __postgresql_repo_pkg_installed_result
+#   ignore_errors: yes
+#
+# - name: Install pgdg repository package (RedHat)
+#   yum:
+#     name: >-
+#       https://download.postgresql.org/pub/repos/yum/reporpms/{{ postgresql_pgdg_shortfamilies[ansible_distribution]
+#         | default("EL") }}-{{ ansible_distribution_major_version }}-{{ ansible_architecture }}/pgdg-{{
+#         postgresql_pgdg_families[ansible_distribution] | default("redhat") }}-repo-latest.noarch.rpm
+#   register: __postgresql_yum_result
+#   until: __postgresql_yum_result is succeeded
+#   retries: 5
+#   delay: 5
+#   when: __postgresql_repo_pkg_installed_result is failed
+
+#- name: Collect installed repos
+#  yum:
+#    list: repos
+#  until: __postgresql_yum_repolist_result is succeeded
+#  retries: 5
+#  delay: 5
+#  register: __postgresql_yum_repolist_result
+
+# Not supported (and no good workaround) until there is a solution for https://github.com/ansible/ansible/issues/41178
+#- name: Ensure that only the desired PostgreSQL version's repo is enabled
+#  yum_repository:
+#    name: item.repoid
+#    enabled: "{{ (item.repoid == 'pgdg' ~ __postgresql_version_dotless) if item.repoid.startswith('pgdg') else item.state == 'enabled' }}"
+#  # "{{ __postgresql_yum_repolist_result.results | selectattr('repoid', 'startswith', 'pgdg') | list }}" would be nice
+#  # here but alas there is no `startswith` test
+#  loop: "{{ __postgresql_yum_repolist_result.results }}"
+
+# - name: Install PostgreSQL (RedHat)
+#   yum:
+#     name: postgresql{{ __postgresql_version_dotless }}-server
+#
+
+# epel_repo_url: "https://dl.fedoraproject.org/pub/epel/epel-release-latest-{{ ansible_distribution_major_version }}.noarch.rpm"
+# epel_repo_gpg_key_url: "/etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-{{ ansible_distribution_major_version }}"
+# epel_repofile_path: "/etc/yum.repos.d/epel.repo"
+
+- name: Check if EPEL repo is already configured.
+  stat:
+    path: "/etc/yum.repos.d/epel.repo"
+  register: epel_repofile_result
+
+- name: Install EPEL repo.
+  yum:
+    name: "https://dl.fedoraproject.org/pub/epel/epel-release-latest-{{ ansible_distribution_major_version }}.noarch.rpm"
+    state: present
+  register: result
+  until: result is succeeded
+  retries: 5
+  delay: 10
+  when: not epel_repofile_result.stat.exists
+
+- name: Import EPEL GPG key.
+  rpm_key:
+    key: "/etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-{{ ansible_distribution_major_version }}"
+    state: present
+  when: not epel_repofile_result.stat.exists
+  ignore_errors: "{{ ansible_check_mode }}"
+
+
+# https://postgis.net/install/
+# - name: Install PostGIS (RedHat)
+#   yum:
+#     name: "postgis25_{{ __postgresql_version_dotless }}"
+- name: Install dependencies
+  yum: name={{ item }}
+  with_items:
+      - build-essential
+      - postgresql-9.1
+      - postgresql-server-dev-9.1
+      - libxml2-dev
+      - proj
+      - libjson0-dev
+      - xsltproc
+      - docbook-xsl
+      - docbook-mathml
+      - libgdal1-dev
+
+
+- name: download PostGis
+  unarchive:
+    src: "https://download.osgeo.org/postgis/source/postgis-3.0.0.tar.gz"
+    dest: /tmp/postgis/
+
+- name: install PostGis
+  action: command make install chdir=${userhome}/download/postgis-2.0.1
+- name: install PostGis
+  action: command make comments-install chdir=${userhome}/download/postgis-2.0.1
+- name: post install ldconfig
+
+yum install gcc-c++
+yum list installed | grep gdal
+yum install gdal-devel
+yum list installed | grep postgresql
+export PATH=/usr/pgsql-11/bin:/usr/pgsql-11/lib/:$PATH
+export LD_LIBRARY_PATH=/usr/pgsql-11/lib/
+
+# - name: Check for pgdata directory
+#   stat:
+#     path: "{{ postgresql_pgdata }}/base"
+#   register: pgdata_stat
+#   failed_when: false
+#
+# - name: Initialize database (RedHat < 7)
+#   command: /sbin/service postgresql-{{ postgresql_version }} initdb
+#   args:
+#     warn: false  # Use of /sbin/service is valid here, ignore lint error
+#   when: >-
+#     ansible_distribution_major_version is version(7, '<')
+#       and (pgdata_stat.stat.isdir is not defined or not pgdata_stat.stat.isdir)
+#
+# - name: Initialize database (RedHat >= 7)
+#   command: >-
+#     /usr/pgsql-{{ postgresql_version }}/bin/postgresql{{ __postgresql_command_sep }}{{
+#       __postgresql_version_dotless }}-setup initdb
+#   when: >-
+#     ansible_distribution_major_version is version(7, '>=')
+#       and (pgdata_stat.stat.isdir is not defined or not pgdata_stat.stat.isdir)
